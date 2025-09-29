@@ -1,0 +1,78 @@
+import heapq
+
+# =================================================================
+# I. ALGORITMO DE BÚSQUEDA HEURÍSTICA (A*)
+# =================================================================
+
+def busqueda_heuristica_a_estrella(posicion_inicial, funcion_es_objetivo, funcion_heuristica):
+    """
+    Implementa el algoritmo A* para encontrar la posición real del motor.
+    """
+    if funcion_es_objetivo(posicion_inicial):
+        return [posicion_inicial]
+
+    # La Frontera es una Cola de Prioridad (Min-Heap) con tuplas: (f(n), g(n), posición, camino)
+    h_inicial = funcion_heuristica(posicion_inicial)
+    frontera = [(h_inicial, 0, posicion_inicial, [posicion_inicial])]
+    heapq.heapify(frontera)
+    
+    nodos_visitados = {posicion_inicial}
+
+    while frontera:
+        # Extrae el nodo con el menor f(n) (la prioridad más baja).
+        f_actual, g_actual, pos_actual, camino_actual = heapq.heappop(frontera)
+
+        # Generar sucesores: movimientos (+1) y (-1).
+        for accion in [+1, -1]:
+            siguiente_pos = pos_actual + accion
+
+            if siguiente_pos not in nodos_visitados:
+                
+                if funcion_es_objetivo(siguiente_pos):
+                    # Solución encontrada por el sensor.
+                    return camino_actual + [siguiente_pos]
+
+                nodos_visitados.add(siguiente_pos)
+                
+                # Cálculo de A*: f(n) = g(n) + h(n)
+                g_nuevo = g_actual + 1 # g(n): Costo real recorrido (un paso cuesta 1).
+                h_nuevo = funcion_heuristica(siguiente_pos) # h(n): Costo estimado por el sensor.
+                f_nuevo = g_nuevo + h_nuevo
+
+                nuevo_camino = camino_actual + [siguiente_pos]
+                heapq.heappush(frontera, (f_nuevo, g_nuevo, siguiente_pos, nuevo_camino))
+                
+    return None
+
+# =================================================================
+# II. CONFIGURACIÓN DEL AMBIENTE Y HEURÍSTICA DEL RELIEVE
+# =================================================================
+
+posicion_real_motor = -3 # El objetivo del robot.
+
+def es_objetivo(posicion):
+    # Simula el sensor que detecta el agujero.
+    print(f"Evaluando posición: {posicion}...")
+    return posicion == posicion_real_motor
+
+# Mapa de Relieve: Valores de h(n)
+# Un valor bajo (cercano a 0) indica mayor cercanía al objetivo.
+MAPA_RELIEVE = {
+    4: 7, 3: 5, 2: 3, 1: 1, 0: 2,   # Lado derecho: h(n) alto.
+    -1: 1, -2: 0.5, -3: 0, -4: 1    # Lado izquierdo: h(n) bajo, guía la exploración.
+}
+
+def heuristica_relieve_real(posicion):
+    """
+    Función heurística h(n) que simula la lectura del sensor de relieve.
+    """
+    # Devuelve la lectura del mapa, o un costo muy alto si está fuera de la zona esperada.
+    return MAPA_RELIEVE.get(posicion, 1000) 
+
+# =================================================================
+# III. EJECUCIÓN DEL PROTOTIPO
+# =================================================================
+print("--- Iniciando Búsqueda A* con Guía de Relieve ---")
+solucion = busqueda_heuristica_a_estrella(0, es_objetivo, heuristica_relieve_real)
+
+print(f"\nCamino encontrado: {solucion}")
