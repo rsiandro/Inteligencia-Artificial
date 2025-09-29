@@ -1,0 +1,65 @@
+from collections import deque # Importa 'deque', la estructura de datos para implementar una Cola FIFO (BFS).
+
+# =================================================================
+# CONFIGURACIÓN ESPECÍFICA DEL PROBLEMA 
+# =================================================================
+
+posicion_real_motor = -3 # El objetivo real del robot.
+
+def es_objetivo(posicion):
+    """
+    Función de Objetivo: Simula el sensor que detecta el agujero roscado.
+    En BFS, esta es la única 'información' utilizada para detener la búsqueda.
+    """
+    # En un entorno real, solo se registraría True/False; el print es solamente para demostración.
+    return posicion == posicion_real_motor
+
+# =================================================================
+# IMPLEMENTACIÓN DEL ALGORITMO BFS
+# =================================================================
+
+def busqueda_exhaustiva_ensamble(posicion_inicial, funcion_es_objetivo):
+    """
+    Implementación del algoritmo BFS para la búsqueda 'a ciegas' del motor.
+    """
+    if funcion_es_objetivo(posicion_inicial):
+        # Verifica si el objetivo es la posición inicial.
+        return [posicion_inicial]
+
+    # Frontera (Cola): Almacena tuplas (posición, camino_hasta_acá)
+    frontera = deque([(posicion_inicial, [posicion_inicial])]) 
+    nodos_visitados = {posicion_inicial} # Conjunto para evitar la misma posición dos veces.
+
+    while frontera:
+        # Extrae el elemento más antiguo de la izquierda (FIFO).
+        posicion_actual, camino_actual = frontera.popleft()
+
+        # Acciones: Mover a la derecha (+) o a la izquierda (-).
+        for accion in [1, -1]: 
+            siguiente_posicion = posicion_actual + accion
+
+            if siguiente_posicion not in nodos_visitados:
+                
+                if funcion_es_objetivo(siguiente_posicion):
+                    # Objetivo encontrado. Se detiene y devuelve el camino.
+                    return camino_actual + [siguiente_posicion]
+
+                # Marcar, extender camino y agregar a la cola (FIFO) para exploración futura.
+                nodos_visitados.add(siguiente_posicion)
+                nuevo_camino = camino_actual + [siguiente_posicion]
+                frontera.append((siguiente_posicion, nuevo_camino))
+                
+    return None # Si la cola se vacía y no se encontró solución.
+
+# =================================================================
+# EJECUCIÓN DEL PROTOTIPO
+# =================================================================
+
+print("--- Iniciando Búsqueda Exhaustiva BFS ---")
+solucion = busqueda_exhaustiva_ensamble(0, es_objetivo)
+
+if solucion:
+    print(f"\nCamino encontrado: {solucion}")
+    print(f"Movimientos totales (Costo Real): {len(solucion) - 1}")
+else:
+    print("\nNo se pudo encontrar la posición objetivo.")
