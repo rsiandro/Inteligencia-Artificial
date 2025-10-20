@@ -1,0 +1,188 @@
+import numpy as np
+from numpy.linalg import pinv # Importamos la función de Pseudo-Inversa, clave para el entrenamiento
+
+# ===================================================
+# --- PARÁMETROS BÁSICOS DE LA RED ---
+# ===================================================
+N = 10                  # La imagen es de 10x10 píxeles.
+NN = N * N              # Número total de neuronas de la red (100).
+Q = 4                   # Cantidad de patrones que la red va a "memorizar" (4 posiciones del aro).
+NOISE_LEVEL = 0.15      # Nivel de ruido que añadimos a la imagen de prueba (15% de píxeles volteados).
+MAX_ITER = 20           # Límite de seguridad para que la red no se quede en un bucle infinito.
+
+# ===================================================
+# --- FUNCIONES AUXILIARES (Herramientas) ---
+# ===================================================
+
+def vec_to_img(vector, N=N):
+    """
+    Convierte el vector de 100 neuronas (1D) en una matriz 10x10 (2D).
+    Es necesario para poder ver la imagen.
+    """
+    return vector.reshape((N, N)).astype(int)
+
+def img_to_vec(image):
+    """Convierte la matriz 10x10 de la imagen a un vector de 100 neuronas."""
+    return image.flatten()
+
+def sgn_activation(vector):
+    """
+    Función de Activación (Función Signo). 
+    Decide el nuevo estado de cada neurona: +1 si la suma es >= 0, y -1 si es < 0.
+    """
+    output = np.sign(vector)
+    output[output == 0] = 1 # Ajuste para que sgn(0) sea +1
+    return output.astype(int)
+
+def add_noise(vector, noise_level):
+    """
+    Simula el ruido en la imagen de la línea de montaje.
+    Voltea un porcentaje de píxeles (+1 a -1, o -1 a +1) de forma aleatoria.
+    """
+    num_flips = int(NN * noise_level)
+    indices_to_flip = np.random.choice(NN, size=num_flips, replace=False)
+    
+    noisy_vector = vector.copy()
+    noisy_vector[indices_to_flip] *= -1 
+    return noisy_vector.astype(int)
+
+def get_circle_center(image):
+    """
+    Calcula el Centro de Masa (posición promedio X, Y) de la pieza.
+    Esto nos da la "coordenada de la posición" del aro identificado.
+    """
+    # Buscamos todos los píxeles que son '+1' (parte del aro)
+    coords = np.argwhere(image == 1)
+    if coords.size == 0:
+        return "No identificado"
+    
+    # El centro es el promedio de todas esas coordenadas
+    center_x = coords[:, 1].mean()
+    center_y = coords[:, 0].mean()
+    
+    return (round(center_x), round(center_y))
+
+# ===================================================
+# --- FASE 1: ENTRENAMIENTO (Cálculo de la Matriz W) ---
+# ===================================================
+
+def define_patterns():
+    """
+    Define las 4 imágenes (patrones canónicos) que la red debe memorizar.
+    Usamos un patrón de "aro hueco".
+    """
+    
+    # Patrón base de un aro hueco (se usa para generar los 4 patrones por desplazamiento)
+    P1_img_base = np.array([
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1,  1,  1,  1,  1, -1, -1, -1],
+        [-1, -1,  1, -1, -1, -1, -1,  1, -1, -1],
+        [-1, -1,  1, -1, -1, -1, -1,  1, -1, -1],
+        [-1, -1,  1, -1, -1, -1, -1,  1, -1, -1],
+        [-1, -1, -1,  1,  1,  1,  1, -1, -1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+    ], dtype=int)
+    
+    # 1. Patrón 1: Centrado (casi)
+    X1 = img_to_vec(P1_img_base)
+
+    # 2. Patrón 2: Desplazado Arriba-Izquierda
+    X2 = img_to_vec(np.roll(np.roll(P1_img_base, -3, axis=0), -3, axis=1))
+
+    # 3. Patrón 3: Desplazado Abajo-Derecha (Usamos este para la prueba de ruido)
+    X3 = img_to_vec(np.roll(np.roll(P1_img_base, 3, axis=0), 3, axis=1))
+
+    # 4. Patrón 4: Desplazado a la Derecha
+    X4 = img_to_vec(np.roll(np.roll(P1_img_base, 0, axis=0), 3, axis=1))
+
+    # U es la Matriz de Patrones, donde cada columna es un patrón memorizado.
+    U = np.column_stack((X1, X2, X3, X4))
+    
+    print("\n[INFO] Patrones canónicos (Aros Huecos) definidos y vectorizados.")
+    print(f"       Dimensión de la Matriz U (NN x Q): {U.shape}")
+    return U, X3 # X3 es nuestro patrón 'limpio' de prueba
+
+def train_hopfield_pseudo_inverse(U):
+    """
+    Calcula la Matriz de Pesos (W) usando la fórmula de la Pseudo-Inversa.
+    Este método asegura que los patrones sean puntos fijos estables (mejor que la Regla de Hebb).
+    """
+    
+    # pinv calcula la pseudo-inversa: U+
+    U_plus = pinv(U)
+    
+    # W = U * U+
+    W = U @ U_plus
+    
+    # Anulamos la diagonal principal para que las neuronas no se afecten a sí mismas.
+    np.fill_diagonal(W, 0)
+    
+    print(f"[INFO] Matriz de Pesos W calculada por Pseudo-Inversa.")
+    print(f"       Dimensión de W (NN x NN): {W.shape}")
+    return W
+
+# ===================================================
+# --- FASE 2: RECUPERACIÓN (Simulación) ---
+# ===================================================
+
+def converge_hopfield(W, X_in, max_iter):
+    """
+    Simula la dinámica de la red. La entrada ruidosa (X_in) iterará hasta que
+    se estabilice en el patrón limpio memorizado más cercano.
+    """
+    X_current = X_in.copy()
+    
+    for t in range(max_iter):
+        
+        # Fórmula de actualización síncrona: X(t+1) = sgn(W * X(t))
+        X_next_activation = W @ X_current
+        X_next = sgn_activation(X_next_activation)
+        
+        # Criterio de estabilidad: si la imagen ya no cambia, la red ha convergido.
+        if np.array_equal(X_next, X_current):
+            return X_next, t + 1
+        
+        X_current = X_next
+        
+    return X_current, max_iter
+
+# ===================================================
+# --- EJECUCIÓN DEL PROTOTIPO ---
+# ===================================================
+
+# 1. Entrenamiento: Le enseñamos a la red las 4 posiciones
+U, X_clean = define_patterns()
+W = train_hopfield_pseudo_inverse(U)
+
+# 2. Prueba: Generamos la entrada ruidosa para el Patrón 3 (Abajo-Derecha)
+X_clean = X_clean.astype(int) 
+X_in = add_noise(X_clean, noise_level=NOISE_LEVEL)
+print(f"[INFO] Entrada de consulta generada con {NOISE_LEVEL*100:.0f}% de ruido.")
+
+# 3. Convergencia: Corremos la red
+X_out, iterations = converge_hopfield(W, X_in, max_iter=MAX_ITER)
+
+# 4. Resultados
+X_in_img = vec_to_img(X_in)
+X_out_img = vec_to_img(X_out)
+center_coords = get_circle_center(X_out_img)
+is_match = np.array_equal(X_out, X_clean)
+
+# Imprimir la salida final en consola
+print("\n" + "="*70)
+print("             RESULTADOS DEL PROTOTIPO DE HOPFIELD")
+print("="*70)
+print(f"Estado de Convergencia: {'Convergió a un estado estable' if iterations < MAX_ITER else 'Máx. iteraciones alcanzado'}")
+print(f"Iteraciones Requeridas: {iterations}")
+print("-" * 70)
+print(f"IMAGEN DE ENTRADA RUIDOSA (10x10):\n{X_in_img}")
+print("-" * 70)
+print(f"IMAGEN FINAL RECUPERADA (10x10): (Muestra el patrón limpio, sin ruido)\n{X_out_img}")
+print("-" * 70)
+print(f"Verificación (Recuperación Exitosa): {is_match}")
+print(f"Coordenadas del Centro (X, Y) Identificado: ({center_coords[0]}, {center_coords[1]})")
+print("(Este es el dato clave que simula la identificación de la posición de la pieza.)")
+print("="*70)
