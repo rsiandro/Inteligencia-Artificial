@@ -1,0 +1,111 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def detectar_centro_motor(ruta_imagen):
+    print("--- INICIO DEL PROCESO DE VISIÓN ARTIFICIAL (TP4 - Consigna 3) ---")
+    
+    # 1. CARGA DE IMAGEN
+    img_original = cv2.imread(ruta_imagen)
+    if img_original is None:
+        print(f"Error: No se pudo cargar la imagen: {ruta_imagen}")
+        return
+
+    # Copia para visualización final
+    img_resultado = img_original.copy()
+    img_rgb = cv2.cvtColor(img_resultado, cv2.COLOR_BGR2RGB) # Para Matplotlib
+
+    # 2. PREPROCESAMIENTO (Mas necesario para Círculos)
+    # -------------------------------------------
+    # Convertimos a escala de grises.
+    gris = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+    
+    # Aplicamos Median Blur (Suavizado de Mediana)
+    # Justificación: A diferencia de las rectas, HoughCircles es muy sensible al ruido
+    # de puntos brillantes aislados. El filtro de mediana es mejor
+    # en este caso porque elimina el ruido sin borrar los bordes curvos del aro.
+    gris_suavizado = cv2.medianBlur(gris, 5)
+
+    # 3. TRANSFORMADA DE HOUGH DE CÍRCULOS
+    # ------------------------------------
+    # Función: cv2.HoughCircles
+    # Método: cv2.HOUGH_GRADIENT (Utiliza gradientes de borde para optimizar la búsqueda).
+    
+    # --- PARÁMETROS CLAVE ---
+    # dp=1: Resolución del acumulador. 1 significa misma resolución que la imagen.
+    # minDist=50: Distancia mínima entre centros detectados. 
+    #             IMPORTANTE: Al poner un valor alto (50px), evitamos que detecte múltiples 
+    #             círculos concéntricos muy pegados. Queremos un solo ganador "A".
+    # param1=100: Umbral superior para el detector de bordes Canny interno.
+    # param2=30:  Umbral del acumulador. Cuanto más bajo, más "falsos círculos" detecta.
+    #             Cuanto más alto, más estricto (debe ser un círculo muy perfecto).
+    # minRadius=40, maxRadius=55: LA RESTRICCIÓN DEL "RADIO CONOCIDO".
+    #             Acá forzamos al algoritmo a buscar solo el aro principal "C",
+    #             ignorando otros orificios pequeños o mas grandes.
+    
+    circulos = cv2.HoughCircles(
+        gris_suavizado, 
+        cv2.HOUGH_GRADIENT, 
+        dp=1, 
+        minDist=50,
+        param1=100, 
+        param2=30, 
+        minRadius=40,  # Radio mínimo en píxeles (Ajustar si no detecta)
+        maxRadius=55   # Radio máximo en píxeles
+    )
+
+    # 4. PROCESAMIENTO DE RESULTADOS
+    # ------------------------------
+    if circulos is not None:
+        # Redondeamos los parámetros (x, y, radio) a enteros
+        circulos_redondeados = np.uint16(np.around(circulos))
+        
+        cantidad = len(circulos_redondeados[0, :])
+        print(f"-> Éxito: Se detectaron {cantidad} círculos candidatos.")
+        
+        # Iteramos (aunque idealmente debería ser solo 1 gracias a nuestros filtros)
+        for i in circulos_redondeados[0, :]:
+            centro_x, centro_y, radio = i[0], i[1], i[2]
+            
+            # Imprimimos la coordenada "A" buscada por el robot
+            print(f"-> CENTRO 'A' LOCALIZADO EN: Coordenadas (X={centro_x}, Y={centro_y}) - Radio: {radio}px")
+            
+            # A. Dibujar el perímetro del círculo (Verde)
+            cv2.circle(img_resultado, (centro_x, centro_y), radio, (0, 255, 0), 2)
+            
+            # B. Dibujar el CENTRO 'A' (Punto Rojo)
+            # Esto visualiza el objetivo final del TP: el punto de anclaje para el robot.
+            cv2.circle(img_resultado, (centro_x, centro_y), 2, (0, 0, 255), 3)
+            
+            # Texto con coordenadas en la imagen
+            coord_texto = f"A ({centro_x}, {centro_y})"
+            cv2.putText(img_resultado, coord_texto, (centro_x + 10, centro_y - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+    else:
+        print("-> No se detectaron círculos. Intente ampliar el rango minRadius/maxRadius.")
+
+    # 5. VISUALIZACIÓN FINAL
+    # ----------------------------------------
+    img_final_rgb = cv2.cvtColor(img_resultado, cv2.COLOR_BGR2RGB)
+    
+    plt.figure(figsize=(10, 5))
+    
+    # Panel 1: Imagen Original
+    plt.subplot(1, 2, 1)
+    plt.imshow(img_rgb)
+    plt.title("1. Imagen Original")
+    plt.axis('off')
+    
+    # Panel 2: Centro Detectado
+    plt.subplot(1, 2, 2)
+    plt.imshow(img_final_rgb)
+    plt.title("2. Centro 'A' Identificado (Objetivo Logrado)")
+    plt.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- EJECUCIÓN ---
+nombre_archivo = 'Aro_motor.jpg'
+detectar_centro_motor(nombre_archivo)
