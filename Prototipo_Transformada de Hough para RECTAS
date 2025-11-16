@@ -1,1 +1,102 @@
-prueba
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def detectar_bordes_motor(ruta_imagen):
+    print("--- INICIO DEL PROCESO DE VISIÓN ARTIFICIAL (TP4 - Consigna 2) ---")
+    
+    # 1. CARGA DE IMAGEN
+    # ------------------
+    # Cargamos la imagen del motor proporcionada.
+    img_original = cv2.imread(ruta_imagen)
+    
+    if img_original is None:
+        print(f"Error: No se pudo cargar la imagen en la ruta: {ruta_imagen}")
+        return
+
+    # Convertimos a RGB para que Matplotlib la muestre con los colores correctos
+    img_rgb = cv2.cvtColor(img_original, cv2.COLOR_BGR2RGB)
+    
+    # 2. PREPROCESAMIENTO (Escala de Grises y Filtrado)
+    # -------------------------------------------------
+    # La Transformada de Hough trabaja sobre intensidades, no sobre color.
+    # Convertimos a escala de grises.
+    gris = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+    
+    # Aplicamos un Filtro Gaussiano (Suavizado)
+    # Justificación Teórica: Como mencionamos, el ruido genera "votos falsos" en el acumulador.
+    # El bloque del motor tiene textura rugosa (fundición); este filtro difumina esa textura
+    # para que el detector de bordes se concentre solo en las líneas estructurales fuertes.
+    # Kernel (5, 5) define el tamaño del área de suavizado.
+    gris_suavizado = cv2.GaussianBlur(gris, (5, 5), 0)
+    
+    # 3. DETECCIÓN DE BORDES (Algoritmo Canny)
+    # ----------------------------------------
+    # Canny encuentra los gradientes (cambios bruscos de intensidad).
+    # Umbrales (50, 150): Definen qué tan fuerte debe ser el cambio para considerarse borde.
+    # Esto genera la "silueta" necesaria para que Hough pueda votar.
+    bordes = cv2.Canny(gris_suavizado, 50, 150)
+    
+    # 4. TRANSFORMADA DE HOUGH PROBABILÍSTICA (Rectas)
+    # ------------------------------------------------
+    # Utilizamos HoughLinesP (Probabilístico) en lugar del estándar.
+    # Ventaja: Detecta segmentos de línea (inicio y fin) en lugar de líneas infinitas,
+    # lo cual es más real para los bordes físicos de un bloque de motor.
+    
+    # Parámetros Clave:
+    # rho = 1: Resolución de la distancia (1 píxel).
+    # theta = np.pi / 180: Resolución del ángulo (1 grado).
+    # threshold = 50: Umbral de votos. Una línea debe recibir al menos 50 votos (puntos alineados)
+    #                 para ser aceptada. Si es muy bajo, detectará ruido como líneas.
+    # minLineLength = 50: Longitud mínima. Descartamos rayitas cortas de la textura.
+    # maxLineGap = 10: Huecos permitidos. Si una línea se rompe por 10 píxeles, la unimos (reconstrucción).
+    
+    lineas = cv2.HoughLinesP(bordes, rho=1, theta=np.pi/180, threshold=50, 
+                             minLineLength=50, maxLineGap=10)
+    
+    # Copia para dibujar los resultados sin dañar la original
+    img_resultado = img_rgb.copy()
+    
+    print(f"\nAnálisis de Hough completado.")
+    
+    if lineas is not None:
+        print(f"-> Se detectaron {len(lineas)} segmentos de recta relevantes.")
+        print("-> Dibujando líneas sobre la imagen original (Color Verde)...")
+        
+        for linea in lineas:
+            x1, y1, x2, y2 = linea[0]
+            # Dibujamos una línea verde (0, 255, 0) con grosor 2
+            cv2.line(img_resultado, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    else:
+        print("-> No se detectaron líneas con los parámetros actuales. Probá bajar el 'threshold'.")
+
+    # 5. VISUALIZACIÓN DE RESULTADOS
+    # ------------------------------
+    # Mostramos los 3 pasos del proceso.
+    plt.figure(figsize=(15, 5))
+    
+    # Panel 1: Original
+    plt.subplot(1, 3, 1)
+    plt.imshow(img_rgb)
+    plt.title("1. Imagen Original (Motor)")
+    plt.axis('off')
+    
+    # Panel 2: Bordes (Canny)
+    plt.subplot(1, 3, 2)
+    plt.imshow(bordes, cmap='gray')
+    plt.title("2. Bordes Detectados (Entrada para Hough)")
+    plt.axis('off')
+    
+    # Panel 3: Resultado Final
+    plt.subplot(1, 3, 3)
+    plt.imshow(img_resultado)
+    plt.title("3. Rectas Detectadas (Hough)")
+    plt.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- EJECUCIÓN DEL PROGRAMA ---
+# Asegurese de que el nombre del archivo sea correcto
+nombre_archivo = 'Aro_motor.jpg'
+detectar_bordes_motor(nombre_archivo)
